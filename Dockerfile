@@ -1,12 +1,56 @@
-FROM ubuntu
-RUN apt-get update 
-RUN apt-get install nano
-RUN apt-get install -yq nodejs
-RUN apt-get install -yq  npm
-#RUN  npm init
-RUN npm install express --save
-RUN npm install cassandra-driver --save
-RUN apt-get install -yq openssh-server
-#COPY open.js /home/
-EXPOSE 80 8080 11900
+FROM centos/s2i-core-centos7
+
+ENV CASSANDRA_VERSION=3.11 \
+    SUMMARY="Cassandra is an OpenSource database for high-scale application" \
+    DESCRIPTION="Cassandra is a partitioned row store."
+
+LABEL summary="$SUMMARY" \
+      description="$DESCRIPTION" \
+      io.k8s.description="$SUMMARY" \
+      io.k8s.display-name="Cassandra $CASSANDRA_VERSION" \
+      io.openshift.expose-services="7199:cassandra,9042:cql" \
+      io.openshift.tags="database,cassandra,cassandra3" \
+      name="centos/cassandra-3-centos7" \
+      version="$CASSANDRA_VERSION" \
+      release="1" \
+      com.redhat.component="rh-cassandra3-docker" \
+      maintainer="SoftwareCollections.org <sclorg@redhat.com>"
+
+ENV CASSANDRA_VERSION=3.11 \
+    # Set paths to avoid hard-coding them in scripts.
+    HOME=/var/opt/rh/sclo-cassandra3/lib/cassandra \
+    CASSANDRA_CONF_DIR=/etc/opt/rh/sclo-cassandra3/cassandra/ \
+    CONTAINER_SCRIPTS_PATH=/usr/share/container-scripts/cassandra \
+    ENABLED_COLLECTIONS="sclo-cassandra3 rh-java-common rh-maven33" \
+    BASH_ENV="\${CONTAINER_SCRIPTS_PATH}/scl_enable" \
+    ENV="\${CONTAINER_SCRIPTS_PATH}/scl_enable" \
+    PROMPT_COMMAND=". \${CONTAINER_SCRIPTS_PATH}/scl_enable"
+
+# 7000: intra-node communication
+# 7001: TLS intra-node communication
+# 7199: JMX
+# 9042: CQL
+EXPOSE 7000 7001 7199 9042
+
+ADD root /
+
+COPY ./s2i/bin/ $STI_SCRIPTS_PATH
+
+RUN INSTALL_PKGS="sclo-cassandra3 sclo-cassandra3-cassandra jemalloc" && \
+    yum install -y centos-release-scl && \
+    yum install -y epel-release && \
+    yum install --enablerepo=centos-sclo-sclo-testing -y --setopt=tsflags=nodocs $INSTALL_PKGS && \
+    rpm -V $INSTALL_PKGS && \
+    yum clean all && \
+    chgrp -R 0 /etc/opt/rh/sclo-cassandra3/ && \
+    chmod -R g=u /etc/opt/rh/sclo-cassandra3/ && \
+    chgrp -R 0 /var/opt/rh/sclo-cassandra3/ && \
+    chmod -R g=u /var/opt/rh/sclo-cassandra3/
+
+VOLUME ["/var/opt/rh/sclo-cassandra3/lib/cassandra"]
+
+USER 143
+
+ENTRYPOINT ["container-entrypoint"]
+CMD ["run-cassandra"]
 
